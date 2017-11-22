@@ -12,16 +12,7 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
     #region Actions
 
 
-    public class FirstCommand : DeployCommand
-    {
-        protected override void DoImpl()
-        {
-            Strategy.StartMatrix.BuilMatrix(Vehiles);
 
-            base.DoImpl();
-        }
-
-    }
 
 
     public abstract class Command
@@ -39,11 +30,14 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
         public Command Next { get; set; }
 
+        public Command[] New { get; set; }
         protected abstract ActionType ActionType { get; }
 
         public void Do()
         {
             DoImpl();
+     
+            Commands.AddRange(New);
             Act?.Invoke(Situation);
         }
 
@@ -125,6 +119,38 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
         }
     }
 
+    public class MoveHorizontalCommand : MoveCommand
+    {
+        private readonly double _x;
+        public MoveHorizontalCommand(VehicleType type, double x) : base(type)
+        {
+            _x = x;
+        }
+
+        protected override void DoImpl()
+        {
+            base.DoImpl();
+            Move.X = _x;
+        }
+    }
+    public class ShiftCommand : MoveCommand
+    {
+        private readonly double _x;
+        private readonly double _y;
+        public ShiftCommand(VehicleType type, double x, double y) : base(type)
+        {
+            _y = y;
+            _x = x;
+        }
+
+        protected override void DoImpl()
+        {
+            base.DoImpl();
+            Move.X = _x;
+            Move.Y = _y;
+        }
+    }
+
     public class MoveCommand : GroupCommand
     {
         protected override ActionType ActionType => ActionType.Move;
@@ -151,7 +177,7 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
     public class MoveByTypeCommand : MoveCommand
     {
-        private Dictionary<VehicleType,PointF> _map=new Dictionary<VehicleType, PointF>{
+        private Dictionary<VehicleType, PointF> _map = new Dictionary<VehicleType, PointF>{
             { VehicleType.Fighter, new PointF(700,700)},
             { VehicleType.Helicopter, new PointF(200, 700) },
             { VehicleType.Ifv, new PointF(700, 200) },
@@ -196,6 +222,7 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
     public interface ICommandCollection
     {
         void Add(Command command);
+        void AddRange(IEnumerable<Command> commands);
         void Remove(Command command);
 
         Command GetToPropcess();
@@ -217,6 +244,11 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             _storage.Add(command);
         }
 
+        public void AddRange(IEnumerable<Command> commands)
+        {
+            commands.ForEach(Add);
+        }
+
         public void Remove(Command command)
         {
             command.Situation = null;
@@ -232,11 +264,28 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
     #endregion
 
-    public class StartMatrix
+    public class StartMatrix 
     {
-        private readonly VecGroup[,] _storage = new VecGroup[3, 3];
-        private readonly VehicleType[] _typesPriority = { VehicleType.Fighter, VehicleType.Helicopter, VehicleType.Ifv, VehicleType.Tank, VehicleType.Arrv };
+        public readonly VecGroup[,] Storage = new VecGroup[3, 3];
+        //private readonly VehicleType[] _typesPriority = { VehicleType.Fighter, VehicleType.Helicopter, VehicleType.Ifv, VehicleType.Tank, VehicleType.Arrv };
         private int _count = 0;
+
+        public VecGroup GetFirstRight(params VehicleType[] exept)
+        {
+            for (int column = 2; column >= 0; column--)
+                for (int row = 2; row >= 0; row--)
+                {
+                    var gr = Storage[row, column];
+                    if (gr != null && !exept.Contains(gr.Type))
+                    {
+                        Storage[row, column] = null;
+
+                        return gr;
+                    }
+                }
+            return null;
+        }
+
         public VecGroup GetFreeGroup()
         {
             return _count < 2 ? (GetLastRowFree() ?? GetFirstFree()) : GetFirstFree();
@@ -252,9 +301,9 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             var minX = groups.Min(e => e.Rect.Right);
             foreach (var vecGroup in groups)
             {
-                int x = GetIndex(vecGroup.Rect.Right, minX, maxX);
-                int y = GetIndex(vecGroup.Rect.Bottom, minY, maxY);
-                _storage[y, x] = vecGroup;
+                vecGroup.Column = GetIndex(vecGroup.Rect.Right, minX, maxX);
+                vecGroup.Row = GetIndex(vecGroup.Rect.Bottom, minY, maxY);
+                Storage[vecGroup.Row, vecGroup.Column] = vecGroup;
             }
         }
         private VecGroup GetLastRowFree()
@@ -262,10 +311,10 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
             for (int j = 2; j >= 0; j--)
             {
-                var gr = _storage[2, j];
+                var gr = Storage[2, j];
                 if (gr != null && (gr.Type == VehicleType.Fighter || gr.Type == VehicleType.Helicopter))
                 {
-                    _storage[2, j] = null;
+                    Storage[2, j] = null;
                     _count++;
                     return gr;
                 }
@@ -281,10 +330,10 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             {
                 for (int j = 2; j >= 0; j--)
                 {
-                    var gr = _storage[i, j];
+                    var gr = Storage[i, j];
                     if (gr != null)
                     {
-                        _storage[i, j] = null;
+                        Storage[i, j] = null;
                         _count++;
                         return gr;
                     }
@@ -302,6 +351,8 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
             return 1;
         }
+
+
     }
 
     public class VecGroup
@@ -312,6 +363,8 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             Type = type;
         }
 
+        public int Row { get; set; }
+        public int Column { get; set; }
         public RectangleF Rect { get; set; }
         public VehicleType Type { get; set; }
         public override string ToString()
@@ -324,7 +377,6 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
     public class VehileCollection : IEnumerable<Veh>
     {
         private readonly Dictionary<long, Veh> _storage = new Dictionary<long, Veh>();
-        private int playerId;
 
         public int Count => _storage.Count;
 
@@ -340,6 +392,8 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
         public void Initialize(Player player, World world)
         {
+            _storage.Values.ForEach(e => e.InMove = false);
+
             if (world.VehicleUpdates.IsNotEmpty())
             {
 
@@ -424,6 +478,7 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
 
         private void SetPosition(double x, double y, Player player, World world)
         {
+            InMove = x != X || y != Y;
             X = x;
             Y = y;
             //if (player.IsMe)
@@ -438,6 +493,7 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             //}
         }
 
+        public bool InMove { get; set; }
         public long Id { get; }
 
         public int Durability { get; private set; }
@@ -753,6 +809,11 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
             return PointF.Subtract(pt, sz);
         }
 
+        public static SizeF operator -(PointF pt, PointF sz)
+        {
+            return PointF.Subtract(pt, sz);
+        }
+
         public static bool operator ==(PointF left, PointF right)
         {
             if ((double)left.X == (double)right.X)
@@ -783,6 +844,11 @@ namespace Com.CodeGame.CodeWars2017.DevKit.CSharpCgdk
         public static PointF Subtract(PointF pt, SizeF sz)
         {
             return new PointF(pt.X - sz.Width, pt.Y - sz.Height);
+        }
+
+        public static SizeF Subtract(PointF destination, PointF source)
+        {
+            return new SizeF(destination.X - source.X, destination.Y - source.Y);
         }
 
         public override bool Equals(object obj)
